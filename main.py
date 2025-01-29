@@ -1,20 +1,21 @@
 import os
+import certifi
 import logging
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, CallbackContext
-from google.generativeai import configure, GenerativeModel
 import pymongo
 from pymongo.server_api import ServerApi
 from pymongo.mongo_client import MongoClient
 from dotenv import load_dotenv
 import requests
+import json
 
 load_dotenv()
+
 # Configure logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# MongoDB setup
 # MongoDB setup
 try:
     client = pymongo.MongoClient(
@@ -34,13 +35,31 @@ users_collection = db["users"]
 chats_collection = db["chats"]
 files_collection = db["files"]
 
-
-# Gemini setup
-configure(api_key=os.getenv('API_KEY'))
-gemini_model = GenerativeModel('gemini-pro')
+# Gemini API details
+GEMINI_API_KEY = os.getenv('API_KEY')
+GEMINI_API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
 
 # Telegram bot token
 TELEGRAM_TOKEN = os.getenv('BOT_TOKEN')
+
+# Function to call Gemini API
+def call_gemini_api(prompt):
+    headers = {
+        'Content-Type': 'application/json'
+    }
+    data = {
+        "contents": [{
+            "parts": [{"text": prompt}]
+        }]
+    }
+    try:
+        response = requests.post(GEMINI_API_URL, headers=headers, data=json.dumps(data))
+        response.raise_for_status()  # Raise an error for bad status codes
+        result = response.json()
+        return result['candidates'][0]['content']['parts'][0]['text']
+    except Exception as e:
+        logger.error(f"Error calling Gemini API: {e}")
+        return "I apologize, but I encountered an error processing your request. Please try again in a moment."
 
 async def start(update: Update, context: CallbackContext):
     user = update.message.from_user
@@ -60,23 +79,27 @@ async def handle_contact(update: Update, context: CallbackContext):
     await update.message.reply_text(f"Thank you! Your phone number {phone_number} has been saved.")
 
 async def handle_message(update: Update, context: CallbackContext):
-    user_input = update.message.text
-    chat_id = update.message.chat_id
+    try:
+        user_input = update.message.text
+        chat_id = update.message.chat_id
 
-    # Get Gemini response
-    response = gemini_model.generate_content(user_input)
-    bot_response = response.text
+        # Get Gemini response
+        bot_response = call_gemini_api(user_input)
 
-    # Save chat history
-    chat_data = {
-        "chat_id": chat_id,
-        "user_input": user_input,
-        "bot_response": bot_response,
-        "timestamp": update.message.date
-    }
-    chats_collection.insert_one(chat_data)
+        # Save chat history
+        chat_data = {
+            "chat_id": chat_id,
+            "user_input": user_input,
+            "bot_response": bot_response,
+            "timestamp": update.message.date
+        }
+        chats_collection.insert_one(chat_data)
 
-    await update.message.reply_text(bot_response)
+        await update.message.reply_text(bot_response)
+    except Exception as e:
+        error_message = "I apologize, but I encountered an error processing your request. Please try again in a moment."
+        logger.error(f"Error in handle_message: {e}")
+        await update.message.reply_text(error_message)
 
 async def handle_image(update: Update, context: CallbackContext):
     file = await update.message.photo[-1].get_file()
@@ -84,8 +107,8 @@ async def handle_image(update: Update, context: CallbackContext):
     await file.download_to_drive(file_path)
 
     # Analyze image with Gemini
-    response = gemini_model.generate_content(f"Describe the content of this image: {file_path}")
-    description = response.text
+    prompt = f"Describe the content of this image: {file_path}"
+    description = call_gemini_api(prompt)
 
     # Save file metadata
     file_data = {
