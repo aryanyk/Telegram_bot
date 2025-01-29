@@ -3,3 +3,7 @@ google-generativeai
 pymongo 
 requests
 python-dotenv
+python-magic-bin
+pytesseract 
+pdfplumber 
+PyMuPDF

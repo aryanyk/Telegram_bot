@@ -9,6 +9,7 @@ from pymongo.mongo_client import MongoClient
 from dotenv import load_dotenv
 import requests
 import json
+import fitz
 
 load_dotenv()
 
@@ -120,6 +121,40 @@ async def handle_image(update: Update, context: CallbackContext):
     files_collection.insert_one(file_data)
 
     await update.message.reply_text(f"Image analysis: {description}")
+    
+async def handle_document(update: Update, context: CallbackContext):
+    file = await update.message.document.get_file()
+    file_path = f"downloads/{file.file_id}.pdf"
+    await file.download_to_drive(file_path)
+
+    # Extract text from PDF
+    pdf_text = extract_text_from_pdf(file_path)
+
+    # Get summary from Gemini API
+    summary = call_gemini_api(pdf_text)
+
+    # Save file metadata
+    file_data = {
+        "chat_id": update.message.chat_id,
+        "filename": file_path,
+        "summary": summary,
+        "timestamp": update.message.date
+    }
+    files_collection.insert_one(file_data)
+
+    await update.message.reply_text(f"PDF Summary: {summary}")
+
+def extract_text_from_pdf(file_path):
+    text = ""
+    try:
+        with fitz.open(file_path) as doc:
+            for page in doc:
+                text += page.get_text()
+    except Exception as e:
+        logger.error(f"Error reading PDF file: {e}")
+        return "Could not extract text from the PDF."
+    
+    return text
 
 async def web_search(update: Update, context: CallbackContext):
     query = " ".join(context.args)
@@ -140,6 +175,7 @@ def main():
     application.add_handler(MessageHandler(filters.CONTACT, handle_contact))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.add_handler(MessageHandler(filters.PHOTO, handle_image))
+    application.add_handler(MessageHandler(filters.ALL, handle_document))
     application.add_handler(CommandHandler("websearch", web_search))
 
     application.run_polling()
