@@ -5,5 +5,9 @@ requests
 python-dotenv
 python-magic-bin
 pytesseract 
-pdfplumber 
+
 PyMuPDF
+easyocr 
+opencv-python 
+googlesearch-python
+
