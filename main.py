@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 # MongoDB setup remains the same
 try:
     client = pymongo.MongoClient(
-        "mongodb+srv://aryan:nowornever098@cluster0.1l2sc.mongodb.net/?retryWrites=true&w=majority&serverSelectionTimeoutMS=50000&tls=True&tlsAllowInvalidCertificates=True"
+        os.getenv('MONGODB_URI')
     )
     client.admin.command('ping')
     print("Connected to MongoDB successfully.")
