@@ -4,10 +4,6 @@ pymongo
 requests
 python-dotenv
 python-magic-bin
-pytesseract 
-
 PyMuPDF
-easyocr 
-opencv-python 
 googlesearch-python
 
